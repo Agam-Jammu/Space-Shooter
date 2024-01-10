@@ -38,8 +38,7 @@ class SpaceGame {
 
     loadTexturesAndInitializeObjects() {
         const textureLoader = new THREE.TextureLoader();
-        
-        // Load spaceship texture
+
         const spaceshipTexture = textureLoader.load('./models/playerSpaceShip.png', () => {
             this.initPlayerShip(spaceshipTexture);
             this.initEnemyShips(textureLoader);
@@ -67,7 +66,7 @@ class SpaceGame {
             const enemyShip = new THREE.Mesh(geometry, material);
             enemyShip.position.x = (i - 0.5) * 2;
             enemyShip.position.y = 3;
-            enemyShip.isDestroyed = false; // Add property to mark if destroyed
+            enemyShip.isDestroyed = false;
             this.scene.add(enemyShip);
             this.enemyShips.push(enemyShip);
         }
@@ -138,22 +137,29 @@ class SpaceGame {
 
     updateEnemyShips() {
         for (const enemyShip of this.enemyShips) {
-            if (!enemyShip.isDestroyed) { // Only update if the ship is not destroyed
-                enemyShip.position.y -= 0.01;
+            if (!enemyShip.isDestroyed) {
+                enemyShip.position.y -= 0.01 / 3;
 
-                // Check if enemy ship is out of view and reset its position
                 if (enemyShip.position.y < -3) {
-                    enemyShip.position.y = 3;  // Reset position to the top
+                    this.delayedRespawn(enemyShip);
                 }
 
                 this.handleEnemyShipCollision(enemyShip);
-                this.removeOutOfViewEnemyShips(enemyShip);
             } else {
-                // Respawn or reinitialize the enemy ship
-                enemyShip.position.y = 3;  // Reset position to the top
-                enemyShip.isDestroyed = false;  // Reset the destroyed flag
+                this.delayedRespawn(enemyShip);
             }
         }
+    }
+
+    delayedRespawn(enemyShip) {
+        enemyShip.position.set(
+            (Math.random() - 0.5) * 10,
+            3
+        );
+
+        setTimeout(() => {
+            enemyShip.isDestroyed = false;
+        }, 2000);
     }
 
     handleEnemyShipCollision(enemyShip) {
@@ -172,14 +178,8 @@ class SpaceGame {
 
     handleCollision(projectile, enemyShip, index) {
         this.scene.remove(projectile);
-        enemyShip.isDestroyed = true; // Mark the enemy ship as destroyed
+        enemyShip.isDestroyed = true;
         this.projectiles.splice(index, 1);
-    }
-
-    removeOutOfViewEnemyShips(enemyShip) {
-        if (enemyShip.position.y < -3) {
-            enemyShip.position.y = 3;  // Reset position to the top
-        }
     }
 
     updateProjectiles() {
@@ -197,5 +197,4 @@ class SpaceGame {
     }
 }
 
-// Initialize the game
 new SpaceGame();
