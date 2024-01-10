@@ -1,15 +1,5 @@
 class SpaceGame {
     constructor() {
-        this.initializeScene();
-        this.setupRenderer();
-        this.setupEventListeners();
-        this.setupLighting();
-        this.loadTexturesAndInitializeObjects();
-        this.setupCameraPosition();
-        this.startGameLoop();
-    }
-
-    initializeScene() {
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         this.renderer = new THREE.WebGLRenderer();
@@ -17,6 +7,17 @@ class SpaceGame {
         this.enemyShips = [];
         this.projectiles = [];
         this.shipPositionX = 0;
+
+        this.initialize();
+    }
+
+    initialize() {
+        this.setupRenderer();
+        this.setupEventListeners();
+        this.setupLighting();
+        this.loadTexturesAndInitializeObjects();
+        this.setupCameraPosition();
+        this.startGameLoop();
     }
 
     setupRenderer() {
@@ -37,14 +38,20 @@ class SpaceGame {
 
     loadTexturesAndInitializeObjects() {
         const textureLoader = new THREE.TextureLoader();
+        
+        // Load spaceship texture
         const spaceshipTexture = textureLoader.load('./models/playerSpaceShip.png', () => {
             this.initPlayerShip(spaceshipTexture);
             this.initEnemyShips(textureLoader);
-        }, undefined, (error) => console.error('An error occurred:', error));
+        }, undefined, (error) => {
+            console.error('An error occurred while loading the texture:', error);
+        });
     }
 
-    initPlayerShip(texture) {
-        this.playerShip = this.createMesh(texture);
+    initPlayerShip(spaceshipTexture) {
+        const geometry = new THREE.PlaneGeometry(1, 1);
+        const material = new THREE.MeshStandardMaterial({ map: spaceshipTexture, transparent: true });
+        this.playerShip = new THREE.Mesh(geometry, material);
         this.scene.add(this.playerShip);
     }
 
@@ -53,18 +60,17 @@ class SpaceGame {
             textureLoader.load('./models/enemyModel1.png'),
             textureLoader.load('./models/enemyModel2.png')
         ];
-        enemyTextures.forEach((texture, i) => {
-            const enemyShip = this.createMesh(texture);
-            enemyShip.position.set((i - 0.5) * 2, 3, 0);
+
+        for (let i = 0; i < 2; i++) {
+            const geometry = new THREE.PlaneGeometry(1, 1);
+            const material = new THREE.MeshStandardMaterial({ map: enemyTextures[i], transparent: true });
+            const enemyShip = new THREE.Mesh(geometry, material);
+            enemyShip.position.x = (i - 0.5) * 2;
+            enemyShip.position.y = 3;
+            enemyShip.isDestroyed = false; // Add property to mark if destroyed
             this.scene.add(enemyShip);
             this.enemyShips.push(enemyShip);
-        });
-    }
-
-    createMesh(texture) {
-        const geometry = new THREE.PlaneGeometry(1, 1);
-        const material = new THREE.MeshStandardMaterial({ map: texture, transparent: true });
-        return new THREE.Mesh(geometry, material);
+        }
     }
 
     setupCameraPosition() {
@@ -77,82 +83,117 @@ class SpaceGame {
 
     animate() {
         requestAnimationFrame(() => this.animate());
-        this.updateEntities();
-        this.renderer.render(this.scene, this.camera);
-    }
-
-    updateEntities() {
         this.updatePlayerShipPosition();
         this.updateEnemyShips();
         this.updateProjectiles();
+        this.renderer.render(this.scene, this.camera);
     }
 
     handleWindowResize() {
-        const { innerWidth: width, innerHeight: height } = window;
-        this.renderer.setSize(width, height);
-        this.camera.aspect = width / height;
+        const newWidth = window.innerWidth;
+        const newHeight = window.innerHeight;
+        this.renderer.setSize(newWidth, newHeight);
+        this.camera.aspect = newWidth / newHeight;
         this.camera.updateProjectionMatrix();
     }
 
     handleKeyDown(event) {
-        const actions = {
-            'ArrowLeft': () => this.shipPositionX -= 0.1,
-            'ArrowRight': () => this.shipPositionX += 0.1,
-            'Space': () => this.createProjectile()
-        };
-        actions[event.code]?.();
+        switch (event.code) {
+            case 'ArrowLeft':
+                this.movePlayerShipLeft();
+                break;
+            case 'ArrowRight':
+                this.movePlayerShipRight();
+                break;
+            case 'Space':
+                this.createProjectile();
+                break;
+            default:
+                break;
+        }
+    }
+
+    movePlayerShipLeft() {
+        this.shipPositionX -= 0.1;
+    }
+
+    movePlayerShipRight() {
+        this.shipPositionX += 0.1;
     }
 
     createProjectile() {
-        const projectile = this.createMesh(new THREE.MeshStandardMaterial({ color: 0xff0000 }));
+        const geometry = new THREE.SphereGeometry(0.05, 32, 32);
+        const material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+        const projectile = new THREE.Mesh(geometry, material);
         projectile.position.copy(this.playerShip.position);
         this.scene.add(projectile);
         this.projectiles.push(projectile);
     }
 
     updatePlayerShipPosition() {
-        if (this.playerShip) this.playerShip.position.x = this.shipPositionX;
+        if (this.playerShip) {
+            this.playerShip.position.x = this.shipPositionX;
+        }
     }
 
     updateEnemyShips() {
-        this.enemyShips.forEach((enemyShip) => {
-            enemyShip.position.y -= 0.01;
-            this.handleCollisionWithEnemy(enemyShip);
-            this.removeOutOfViewEntities(this.enemyShips, enemyShip);
-        });
+        for (const enemyShip of this.enemyShips) {
+            if (!enemyShip.isDestroyed) { // Only update if the ship is not destroyed
+                enemyShip.position.y -= 0.01;
+
+                // Check if enemy ship is out of view and reset its position
+                if (enemyShip.position.y < -3) {
+                    enemyShip.position.y = 3;  // Reset position to the top
+                }
+
+                this.handleEnemyShipCollision(enemyShip);
+                this.removeOutOfViewEnemyShips(enemyShip);
+            } else {
+                // Respawn or reinitialize the enemy ship
+                enemyShip.position.y = 3;  // Reset position to the top
+                enemyShip.isDestroyed = false;  // Reset the destroyed flag
+            }
+        }
     }
 
-    handleCollisionWithEnemy(enemyShip) {
-        this.projectiles.forEach((projectile, index) => {
-            if (this.detectCollision(projectile, enemyShip)) this.handleCollision(projectile, enemyShip, index);
-        });
-    }
-
-    detectCollision(obj1, obj2) {
-        const tolerance = 0.5;
-        return Math.abs(obj1.position.x - obj2.position.x) < tolerance &&
-               Math.abs(obj1.position.y - obj2.position.y) < tolerance;
+    handleEnemyShipCollision(enemyShip) {
+        for (let i = 0; i < this.projectiles.length; i++) {
+            const projectile = this.projectiles[i];
+            if (
+                projectile.position.x < enemyShip.position.x + 0.5 &&
+                projectile.position.x > enemyShip.position.x - 0.5 &&
+                projectile.position.y < enemyShip.position.y + 0.5 &&
+                projectile.position.y > enemyShip.position.y - 0.5
+            ) {
+                this.handleCollision(projectile, enemyShip, i);
+            }
+        }
     }
 
     handleCollision(projectile, enemyShip, index) {
         this.scene.remove(projectile);
-        this.scene.remove(enemyShip);
+        enemyShip.isDestroyed = true; // Mark the enemy ship as destroyed
         this.projectiles.splice(index, 1);
-        this.enemyShips.splice(this.enemyShips.indexOf(enemyShip), 1);
     }
 
-    removeOutOfViewEntities(entities, entity) {
-        if (entity.position.y < -3) {
-            this.scene.remove(entity);
-            entities.splice(entities.indexOf(entity), 1);
+    removeOutOfViewEnemyShips(enemyShip) {
+        if (enemyShip.position.y < -3) {
+            enemyShip.position.y = 3;  // Reset position to the top
         }
     }
 
     updateProjectiles() {
-        this.projectiles.forEach((projectile, index) => {
-            projectile.position.y += 0.1;
-            this.removeOutOfViewEntities(this.projectiles, projectile);
-        });
+        for (let i = 0; i < this.projectiles.length; i++) {
+            this.projectiles[i].position.y += 0.1;
+            this.removeOutOfViewProjectiles(i);
+        }
+    }
+
+    removeOutOfViewProjectiles(index) {
+        if (this.projectiles[index].position.y > 10) {
+            this.scene.remove(this.projectiles[index]);
+            this.projectiles.splice(index, 1);
+        }
     }
 }
 
